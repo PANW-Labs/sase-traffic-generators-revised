@@ -35,8 +35,7 @@ WantedBy=multi-user.target
 if __name__ == "__main__":
     gateway = sys.argv[1]
     for domain_file in domain_files:
-        filename = os.path.splitext(os.path.basename(domain_file))[0]
-        create_traffic_generator_service(filename, gateway)
+        create_traffic_generator_service(domain_file, gateway)
 
     subprocess.run(["sudo", "systemctl", "daemon-reload"])
     for domain_file in domain_files:
