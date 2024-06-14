@@ -21,7 +21,7 @@ After=network-online.target
 
 [Service]
 Type=simple
-User=lab-user  # Replace with your username
+#User=lab-user  # Replace with your username
 WorkingDirectory={script_directory}
 ExecStart=/usr/bin/python3 gp-traffic-gen.py --domains {filename_full} --insecure {gateway_argument}
 
