@@ -3,7 +3,7 @@ import os
 import subprocess
 import sys
 
-script_directory = "/home/lab-user/scripts/sase-traffic-generators"  # Update with your script directory
+script_directory = "/home/lab-user/scripts/sase-traffic-generators/"  # Update with your script directory
 domain_files = [
     os.path.join(script_directory, "appdomain.txt"),
     os.path.join(script_directory, "badsites.txt"),
