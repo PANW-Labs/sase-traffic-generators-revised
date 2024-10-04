@@ -1,0 +1,14 @@
+[Unit]
+Description=Gateway Checker Service
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+User=root
+ExecStart=/home/lab-user/scripts/sase-traffic-generators/update_gateway.sh /home/lab-user/scripts/sase-traffic-generators/valid_gateway.txt
+Restart=always
+RestartSec=30s
+
+[Install]
+WantedBy=multi-user.target
