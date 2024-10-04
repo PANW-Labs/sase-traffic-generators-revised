@@ -1,0 +1,13 @@
+[Unit]
+Description=GP Traffic Generator - badsites
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=simple
+#User=lab-user  # Replace with your username
+WorkingDirectory=/home/lab-user/scripts/sase-traffic-generators/
+ExecStart=/usr/bin/python3 gp-traffic-gen.py --domains badsites.txt --insecure --gateway 192.168.10.1
+
+[Install]
+WantedBy=multi-user.target
