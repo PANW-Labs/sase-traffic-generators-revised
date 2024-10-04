@@ -10,6 +10,8 @@ WorkingDirectory=/home/lab-user/scripts/sase-traffic-generators/
 ExecStartPre=/bin/bash -c 'while [ ! -s /home/lab-user/scripts/sase-traffic-generators/valid_gateway.txt ]; do sleep 5; done'
 ExecStartPre=/bin/bash -c 'GATEWAY=$(cat /home/lab-user/scripts/sase-traffic-generators/valid_gateway.txt) && echo "Using Gateway: $GATEWAY"'
 ExecStart=/usr/bin/python3 gp-traffic-gen.py --domains top-10k.txt --insecure --gateway $(cat /home/lab-user/scripts/sase-traffic-generators/valid_gateway.txt)
+Restart=on-failure
+RestartSec=5
 
 [Install]
 WantedBy=multi-user.target
