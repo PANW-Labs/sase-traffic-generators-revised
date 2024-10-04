@@ -1,15 +1,28 @@
 #!/bin/bash
 
-# Specify the network interface
-INTERFACE="eth0"  # Replace with your interface name
+# Get the interface name (in this case, ens192)
+INTERFACE="ens192"
 
-# Get the current default gateway
-DEFAULT_GW=$(ip route | grep default | grep $INTERFACE | awk '{print $3}')
+# Get the DHCP-assigned gateway IP
+GATEWAY=$(ip route show | grep "default via" | awk '{print $3}')
 
-# Remove the default gateway if it exists
-if [ -n "$DEFAULT_GW" ]; then
-    echo "Removing default gateway: $DEFAULT_GW from interface: $INTERFACE"
-    sudo ip route del default via $DEFAULT_GW dev $INTERFACE
+echo "Current DHCP-assigned gateway: $GATEWAY"
+
+# Check if a gateway was found
+if [[ -n "$GATEWAY" ]]; then
+    echo "Removing DHCP-assigned gateway: $GATEWAY"
+    # Remove the gateway
+    sudo ip route del default via "$GATEWAY" dev "$INTERFACE"
+    
+    # Verify if the route was removed
+    if ! ip route show | grep -q "default via $GATEWAY"; then
+        echo "Successfully removed the gateway."
+    else
+        echo "Failed to remove the gateway."
+    fi
+    
+    # Optionally flush the route to ensure it gets removed
+    sudo ip route flush table main
 else
-    echo "No default gateway found for interface: $INTERFACE"
+    echo "No DHCP-assigned gateway found for interface $INTERFACE."
 fi
