@@ -1,0 +1,11 @@
+[Unit]
+Description=Remove DHCP-assigned gateway
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/remove_dhcp_gateway.sh
+
+[Install]
+WantedBy=multi-user.target
