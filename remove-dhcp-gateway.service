@@ -5,7 +5,7 @@ After=network-online.target
 
 [Service]
 Type=oneshot
-ExecStart=/usr/local/bin/remove_dhcp_gateway.sh
+ExecStart= /home/lab-user/scripts/sase-traffic-generators/remove_dhcp_gateway.sh
 
 [Install]
 WantedBy=multi-user.target
