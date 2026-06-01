@@ -1,0 +1,22 @@
+[Unit]
+Description=Check webpos.sasedemo.net entry in /etc/hosts
+# After= provides ordering; Wants= avoids a hard failure if the target is
+# already satisfied before network-online activates.
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+# oneshot + RemainAfterExit: the unit stays "active" after the script exits
+# successfully.  This means webpos.service's After= dependency is satisfied
+# and stays satisfied — the old Type=simple would flip to "dead" on exit,
+# which could tear down dependents that used Requires=.
+Type=oneshot
+RemainAfterExit=yes
+
+ExecStart=/bin/bash -c 'until grep -q "webpos.sasedemo.net" /etc/hosts; do sleep 10; done; logger "webpos.sasedemo.net found in /etc/hosts"'
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

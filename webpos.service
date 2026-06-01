@@ -1,0 +1,48 @@
+[Unit]
+Description=Web Application Traffic Generator (Target: webpos.sasedemo.net)
+# Wants (not Requires) — webpos can still run even if check_hosts_entry is not
+# present; After= guarantees ordering without creating a hard lifecycle binding
+# that tears webpos down when check_hosts_entry exits successfully.
+Wants=network-online.target check_hosts_entry.service
+After=network-online.target check_hosts_entry.service
+
+[Service]
+Type=simple
+User=lab-user
+
+# Wait for the hosts entry directly rather than polling systemctl —
+# eliminates the two subprocess forks every 10 s from the old bash loop,
+# and correctly waits for the *condition* rather than the service state.
+ExecStartPre=/bin/bash -c 'until grep -q "webpos.sasedemo.net" /etc/hosts; do sleep 5; done'
+ExecStart=/home/lab-user/scripts/Prisma-SD-WAN-RTP-UDP-Branch-TGEN/webpos.sh webpos.sasedemo.net
+
+Restart=on-failure
+RestartSec=10
+# Cap restarts to 5 per 2 minutes — prevents a crash loop from hammering
+# the network or leaking sockets faster than the kernel can reclaim them.
+StartLimitIntervalSec=120
+StartLimitBurst=5
+
+StandardOutput=journal
+StandardError=journal
+
+# ── Memory controls ──────────────────────────────────────────────────────────
+MemoryAccounting=yes
+MemoryMax=256M
+MemorySwapMax=0
+
+# ── CPU / task controls ──────────────────────────────────────────────────────
+# Each curl invocation is a child process; cap prevents runaway fork storms.
+TasksMax=64
+CPUQuota=25%
+
+# ── File-descriptor controls ─────────────────────────────────────────────────
+# curl batching via --next means far fewer concurrent FDs than the old design.
+LimitNOFILE=512
+
+# ── OOM tuning ───────────────────────────────────────────────────────────────
+# Prefer killing this lab process over system daemons under memory pressure.
+OOMScoreAdjust=500
+
+[Install]
+WantedBy=multi-user.target
