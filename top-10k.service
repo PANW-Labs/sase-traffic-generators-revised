@@ -11,7 +11,16 @@ ExecStartPre=/bin/bash -c 'while [ ! -s /home/lab-user/scripts/sase-traffic-gene
 ExecStartPre=/bin/bash -c 'GATEWAY=$(cat /home/lab-user/scripts/sase-traffic-generators/valid_gateway.txt) && echo "Using Gateway: $GATEWAY"'
 ExecStart=/bin/bash -c '/usr/bin/python3 gp-traffic-gen.py --domains top-10k.txt --insecure --gateway $(cat /home/lab-user/scripts/sase-traffic-generators/valid_gateway.txt)'
 Restart=on-failure
-RestartSec=5
+RestartSec=10
+StartLimitIntervalSec=120
+StartLimitBurst=5
+
+MemoryAccounting=yes
+MemoryMax=256M
+MemorySwapMax=0
+TasksMax=16
+LimitNOFILE=512
+OOMScoreAdjust=500
 
 [Install]
 WantedBy=multi-user.target

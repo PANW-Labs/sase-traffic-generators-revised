@@ -10,16 +10,14 @@ import requests
 import time
 import random
 import argparse
-import getpass
-import json
 import logging
 from logging.handlers import RotatingFileHandler
-import datetime
 import os
 import sys
 import urllib3
-import platform    # For getting the operating system name
-import subprocess  # For executing a shell command
+import platform
+import subprocess
+from requests.adapters import HTTPAdapter
 
 
 urllib3.disable_warnings()
@@ -29,6 +27,7 @@ timer = 10800
 SCRIPT_NAME = "SASE Demo Traffic Generator"
 TIME_BETWEEN_REQUESTS = 5
 MY_LOG_FILE = "sase-traffic-log.txt"
+BACKOFF_PRUNE_INTERVAL = 300  # prune expired backoff entries every 5 minutes
 
 
 if not os.path.exists(MY_LOG_FILE):
@@ -50,28 +49,40 @@ def ping(host):
 
     return subprocess.call(command) == 0
 
-#function to read a file of hostnames separated by carriage returns
 def readFile(fileName):
-    fileObj = open(fileName, "r")  # opens the file in read mode
-    words = fileObj.read().splitlines()  # puts the file into an array
-    fileObj.close()
-    return words
+    with open(fileName, "r") as f:
+        return [line for line in f.read().splitlines() if line.strip()]
 
-# function to grab random entry from a list
 def getRandomUrl(mylist):
-    return mylist[random.randrange(0, len(mylist) - 1)]
+    return random.choice(mylist)
 
-
-# build dictionary where key = protocol_host and backoff value is t in seconds
-# check to see if this URL is backed off
 def isBackedoff(key, db):
-    try:
-        if db[key] is None:
-            return False
-    except:
+    expiry = db.get(key)
+    if expiry is None:
         return False
+    if time.time() >= expiry:
+        del db[key]   # lazy eviction — removes entry as soon as it expires
+        return False
+    return True
 
-    return (time.time() < db[key])
+def pruneBackoff(db):
+    """Remove all expired entries to prevent unbounded dict growth."""
+    now = time.time()
+    expired = [k for k, v in db.items() if v <= now]
+    for k in expired:
+        del db[k]
+
+def makeSession():
+    """Session with bounded connection pools to prevent socket exhaustion."""
+    session = requests.Session()
+    adapter = HTTPAdapter(
+        pool_connections=4,
+        pool_maxsize=8,
+        max_retries=0,
+    )
+    session.mount('http://', adapter)
+    session.mount('https://', adapter)
+    return session
 
 
 def go():
@@ -134,49 +145,64 @@ def go():
     # Prior to starting main loop check if Gateway is reachable
     result = ping(GATEWAY)
     while result != True:
-        print("Gateway unreachable will rerty again in 3 seconds")
+        print("Gateway unreachable will retry again in 3 seconds")
         time.sleep(3)
         result = ping(GATEWAY)
 
     print("Gateway is NOW REACHABLE Starting Traffic Generation")
 
-    # Start main loop
-    logger.info("Running {0} Against Provided List: {1} \n".format(SCRIPT_NAME, args['domains']))
-    while True:
+    # Load domain list once; reload only when the file changes on disk
+    domain_mtime = os.path.getmtime(args['domains'])
+    mylist = readFile(args['domains'])
+    logger.info("Running {0} Against Provided List: {1} ({2} domains)".format(
+        SCRIPT_NAME, args['domains'], len(mylist)))
 
-        # pull in list of hostnames
-        mylist = readFile(args['domains'])
-        myurl = getRandomUrl(mylist)
-        mykey = 'http_' + myurl
+    session = makeSession()
+    last_prune = time.time()
 
-        if isBackedoff(mykey, BACKOFF_DB):
-            logger.error("Currently backed off for:  " + mykey)
-        else:
-            try:
-                logger.info("trying to connect to http://"+ myurl)
-                resp = requests.get("http://" + myurl, timeout=15, verify=False)
-                logger.info("Request to "+myurl+" status= "+str(resp.status_code))
-            except requests.exceptions.RequestException as e:
-                logger.error(e)
-                mydate = time.time()
-                BACKOFF_DB['http_' + myurl] = mydate + timer
-                logger.error("Backoff Val: " + str(BACKOFF_DB['http_' + myurl]))
+    try:
+        while True:
+            # Hot-reload domain list only when file changes — avoids re-reading
+            # on every iteration which causes page-cache churn and heap pressure
+            current_mtime = os.path.getmtime(args['domains'])
+            if current_mtime != domain_mtime:
+                mylist = readFile(args['domains'])
+                domain_mtime = current_mtime
+                logger.info("Domain list reloaded: %d entries", len(mylist))
 
-        mykey = 'https_' + myurl
-        if isBackedoff(mykey, BACKOFF_DB):
-            logger.error("Currently backed off for:  " + mykey)
-        else:
-            try:
-                logger.info("trying to connect to https://"+ myurl)
-                resp2 = requests.get("https://" + myurl, timeout=15, verify=False)
-                logger.info("Request to "+myurl+" status= "+str(resp2.status_code))
+            # Periodically evict expired backoff entries to prevent dict growth
+            now = time.time()
+            if now - last_prune >= BACKOFF_PRUNE_INTERVAL:
+                pruneBackoff(BACKOFF_DB)
+                last_prune = now
 
-            except requests.exceptions.RequestException as e:
-                logger.error(e)
-                mydate = time.time()
-                BACKOFF_DB['https_' + myurl] = mydate + timer
-                logger.error("Backoff Val: " + str(BACKOFF_DB['https_' + myurl]))
-        time.sleep(random.randrange(0,TIME_BETWEEN_REQUESTS))
+            myurl = getRandomUrl(mylist)
+
+            for scheme in ('http', 'https'):
+                mykey = scheme + '_' + myurl
+                if isBackedoff(mykey, BACKOFF_DB):
+                    logger.error("Currently backed off for:  " + mykey)
+                    continue
+                url = scheme + '://' + myurl
+                try:
+                    logger.info("trying to connect to " + url)
+                    # stream=True prevents the response body from being loaded
+                    # into memory; the context manager closes the socket cleanly
+                    with session.get(url, timeout=15, verify=args['verify'],
+                                     stream=True) as resp:
+                        status = resp.status_code
+                    logger.info("Request to " + myurl + " status= " + str(status))
+                except requests.exceptions.RequestException as e:
+                    logger.error(e)
+                    BACKOFF_DB[mykey] = time.time() + timer
+                    logger.error("Backoff Val: " + str(BACKOFF_DB[mykey]))
+
+            time.sleep(random.randrange(0, TIME_BETWEEN_REQUESTS))
+
+    except KeyboardInterrupt:
+        logger.info("Shutting down")
+    finally:
+        session.close()
 
 if __name__ == "__main__":
     go()
