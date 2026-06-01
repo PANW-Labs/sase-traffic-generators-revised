@@ -14,7 +14,7 @@ User=lab-user
 # eliminates the two subprocess forks every 10 s from the old bash loop,
 # and correctly waits for the *condition* rather than the service state.
 ExecStartPre=/bin/bash -c 'until grep -q "webpos.sasedemo.net" /etc/hosts; do sleep 5; done'
-ExecStart=/home/lab-user/scripts/Prisma-SD-WAN-RTP-UDP-Branch-TGEN/webpos.sh webpos.sasedemo.net
+ExecStart=/home/lab-user/scripts/sase-traffic-generators/webpos.sh webpos.sasedemo.net
 
 Restart=on-failure
 RestartSec=10
